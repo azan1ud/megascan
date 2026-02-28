@@ -198,15 +198,20 @@ export async function dbGetTokensMap(addresses: string[]): Promise<Map<string, T
   const map = new Map<string, TokenData>();
   if (addresses.length === 0) return map;
 
-  const { data, error } = await getSupabase()
-    .from('tokens')
-    .select('*')
-    .in('address', addresses);
+  // Batch in groups of 100 to avoid URL length limits on .in() filter
+  const CHUNK = 100;
+  for (let i = 0; i < addresses.length; i += CHUNK) {
+    const batch = addresses.slice(i, i + CHUNK);
+    const { data, error } = await getSupabase()
+      .from('tokens')
+      .select('*')
+      .in('address', batch);
 
-  if (error || !data) return map;
-  for (const row of data) {
-    const token = rowToToken(row);
-    map.set(token.address, token);
+    if (error || !data) continue;
+    for (const row of data) {
+      const token = rowToToken(row);
+      map.set(token.address, token);
+    }
   }
   return map;
 }
