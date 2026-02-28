@@ -347,7 +347,15 @@ export async function dbUpsertCandles(
   candles: { poolAddress: string; timeframe: string; candle: CandleData }[]
 ): Promise<void> {
   if (candles.length === 0) return;
-  const rows = candles.map((c) => candleToRow(c.candle, c.poolAddress, c.timeframe));
+  // Deduplicate: keep last entry per (pool_address, timeframe, time) to avoid
+  // "ON CONFLICT DO UPDATE command cannot affect row a second time"
+  const deduped = new Map<string, Record<string, unknown>>();
+  for (const c of candles) {
+    const row = candleToRow(c.candle, c.poolAddress, c.timeframe);
+    const key = `${c.poolAddress}|${c.timeframe}|${c.candle.time}`;
+    deduped.set(key, row);
+  }
+  const rows = Array.from(deduped.values());
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE);
     const { error } = await getSupabase()
